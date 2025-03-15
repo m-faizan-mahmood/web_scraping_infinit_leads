@@ -14,7 +14,7 @@ import urllib.parse  # For URL encoding
 chrome_driver_path = r'chromedriver.exe'  # Replace with your actual path
 
 # Output CSV filename
-filename = "data_with_websiteswwwww.csv"
+filename = "data_with_websites1.csv"
 
 # Prompt user for the search query (e.g., "car dealers in USA")
 search_query = input("Enter the search query (e.g., 'car dealers in USA'): ")
@@ -31,7 +31,7 @@ browser = webdriver.Chrome(service=service)
 
 # Data storage lists
 record = []  # Stores extracted business data
-e = []  # Tracks already extracted business names to avoid duplicates
+e = []  # Initialize 'e' here in the global scope to avoid scoping issues
 
 def Selenium_extractor():
     action = ActionChains(browser)
@@ -40,55 +40,47 @@ def Selenium_extractor():
     WebDriverWait(browser, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "hfpxzc")))
     
     # Find all business listings
-    a = browser.find_elements(By.CLASS_NAME, "hfpxzc")
+    listings = browser.find_elements(By.CLASS_NAME, "hfpxzc")[:2]  # Only the first 2 listings
     
-    # Scroll until at least 10 listings are available
-    while len(a) < 10:
-        scroll_origin = ScrollOrigin.from_element(a[-1])
-        action.scroll_from_origin(scroll_origin, 0, 10).perform()
-        time.sleep(3)
-        a = browser.find_elements(By.CLASS_NAME, "hfpxzc")
-    
-    # Extract only the first 10 listings
-    for element in a[:10]:  
-        scroll_origin = ScrollOrigin.from_element(element)
-        action.scroll_from_origin(scroll_origin, 0, 10).perform()
-        action.move_to_element(element).perform()
-        element.click()
-        time.sleep(10)  # Allow time for the page to load
+    # Extract phone numbers for each of the first 2 listings
+    for i, listing in enumerate(listings, 1):
+        print(f"Extracting phone number from Listing {i}...")
         
-        # Parse the page content
+        # Scroll to the element and click
+        ActionChains(browser).move_to_element(listing).click().perform()
+        time.sleep(5)  # Wait for the listing page to load
+        
+        # Wait for the phone button to appear (using explicit wait)
+        phone_button = WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//button[contains(@aria-label, "Phone:")]'))
+        )
+        
+        # Extract the phone number from the 'aria-label' attribute
+        phone_number = phone_button.get_attribute('aria-label').replace("Phone: ", "").strip()
+        print(f"Phone Number for Listing {i}: {phone_number}")
+        
+        # Extract the business name from the page
         source = browser.page_source
         soup = BeautifulSoup(source, 'html.parser')
         
         try:
-            # Extract Business Name
             name = soup.find('h1', {"class": "DUwDvf lfPIob"}).get_text(strip=True)
             
             # Avoid duplicates
             if name and name not in e:
                 e.append(name)
                 
-                # Extract Phone Number (updated with the correct HTML structure)
-                phone_div = soup.find('div', class_='rogA2c')
-                phone = None
-                if phone_div:
-                    phone_number_div = phone_div.find('div', class_='Io6YTe fontBodyMedium kR99db fdkmkc')
-                    if phone_number_div:
-                        phone = phone_number_div.get_text(strip=True)
-                
                 # Extract Website
                 website_tag = soup.find('a', {"class": "CsEnBe"})
                 website = website_tag['href'] if website_tag else None
                 
                 # Store data if phone or website exists
-                if phone or website:
-                    print([name, phone, website])
-                    record.append((name, phone, website))
-        
-        except (IndexError, AttributeError) as ex:
-            print("Error:", ex)
-
+                if phone_number or website:
+                    print([name, phone_number, website])
+                    record.append((name, phone_number, website))
+        except Exception:
+            pass  # Skip if there is any error during extraction
+    
     # Save data to CSV if records exist
     if record:
         df = pd.DataFrame(record, columns=['Name', 'Phone number', 'Website'])
